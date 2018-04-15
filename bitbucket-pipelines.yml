@@ -1,0 +1,14 @@
+image: node:8.9.3
+
+pipelines:
+  default:
+    - step:
+        caches:
+          - node
+        script:
+          - npm install -g truffle ganache-cli
+          - rm -rf node_modules build
+          - npm install
+          - nohup ganache-cli -a 50 > /dev/null 2>&1 &
+          - truffle migrate --reset
+          - truffle test
