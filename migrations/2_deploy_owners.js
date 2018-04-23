@@ -4,14 +4,27 @@ const PoolOwners = artifacts.require("./PoolOwners.sol");
 // Accounts
 const accounts = web3.eth.accounts;
 
-module.exports = async (deployer) => {
+let creator;
+let firstOwner;
+let secondOwner;
+
+module.exports = async (deployer, network) => {
+    switch(network) {
+    default:
+        ethWallet = accounts[45];
+        contractOwner = accounts[0];
+        firstPoolOwner = accounts[1];
+        secondPoolOwner = accounts[2];
+        break;
+    }
+
     return deployer.deploy(LinkToken).then(() => {
-        return deployer.deploy(PoolOwners, accounts[45]).then(async() => {
+        return deployer.deploy(PoolOwners, ethWallet).then(async() => {
             let ownersContract = await PoolOwners.deployed();
     
             // Set the ownership of 75% between the two creators
-            await ownersContract.setOwnerShare(accounts[1], web3.toWei(1500, 'ether'), { from: accounts[0] });
-            await ownersContract.setOwnerShare(accounts[2], web3.toWei(1500, 'ether'), { from: accounts[0] });
+            await ownersContract.setOwnerShare(firstPoolOwner, web3.toWei(1500, 'ether'), { from: contractOwner });
+            await ownersContract.setOwnerShare(secondPoolOwner, web3.toWei(1500, 'ether'), { from: contractOwner });
         });
     });
 };

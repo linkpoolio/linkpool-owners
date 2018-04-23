@@ -56,24 +56,9 @@ contract('PoolOwners', accounts => {
     it("should be able to whitelist all accounts contributing", async() => {
         for (i = 3; i < 44; i++) {
             await poolOwners.whitelistWallet(accounts[i], { from: accounts[0] });
+            let whitelisted = await poolOwners.isWhitelisted(accounts[i]);
+            assert.equal(true, whitelisted, "Wallet should be whitelisted after contract call");
         }
-    });
-
-    /**
-     * Ensure contribution amount is divisble by the minimum contribution amount
-     */
-    it("shouldn't be able to contribute an amount which isn't divisible by 0.2 ETH", async() => {
-        await assertThrowsAsync(
-            async() => {
-                await web3.eth.sendTransaction({
-                    from: accounts[3],
-                    to: PoolOwners.address,
-                    value: web3.toWei(1.3, 'ether'),
-                    gas: 140000
-                });
-            },
-            "revert"
-        );
     });
 
     /**
@@ -93,6 +78,43 @@ contract('PoolOwners', accounts => {
         );
     });
 
+    /**
+     * Ensure contributions are only allowed once the phase has been marked as active
+     */
+    it("shouldn't be allowed to contribute if the phase isn't active", async() => {
+        await assertThrowsAsync(
+            async() => {
+                await web3.eth.sendTransaction({
+                    from: accounts[3],
+                    to: PoolOwners.address,
+                    value: web3.toWei(5, 'ether'),
+                    gas: 140000
+                });
+            },
+            "revert"
+        );
+    });
+
+    /**
+     * Ensure contribution amount is divisble by the minimum contribution amount
+     */
+    it("shouldn't be able to contribute an amount which isn't divisible by 0.2 ETH", async() => {
+        // First contribution, so enable the contribution phase
+        await poolOwners.startContribution({ from: accounts[0] });
+
+        await assertThrowsAsync(
+            async() => {
+                await web3.eth.sendTransaction({
+                    from: accounts[3],
+                    to: PoolOwners.address,
+                    value: web3.toWei(1.3, 'ether'),
+                    gas: 140000
+                });
+            },
+            "revert"
+        );
+    });
+    
     /**
      * Ensure the minimum contribution of 0.2 ETH results in 0.005% share
      */

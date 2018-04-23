@@ -15,7 +15,8 @@ contract PoolOwners is Ownable {
     mapping(address => mapping(address => uint256)) private balances;
 
     int256 private totalOwners = 0;
-    bool   private active = false;
+    bool   private contributionStarted = false;
+    bool   private distributionActive = false;
 
     // Public Contribution Variables
     uint256 private ethWei = 1000000000000000000; // 1 ether in wei
@@ -64,6 +65,9 @@ contract PoolOwners is Ownable {
         // Make sure the shares aren't locked
         require(!locked);
 
+        // Ensure the contribution phase has started
+        require(contributionStarted);
+
         // Make sure they're in the whitelist
         require(whitelist[sender]);
 
@@ -110,6 +114,12 @@ contract PoolOwners is Ownable {
 
         // Add address to whitelist
         whitelist[contributor] = true;
+    }
+
+    // Start the contribution
+    function startContribution() external onlyOwner() {
+        require(!contributionStarted);
+        contributionStarted = true;
     }
 
     /**
@@ -181,11 +191,16 @@ contract PoolOwners is Ownable {
         return tokenBalance[token];
     }
 
+    // Is an account whitelisted?
+    function isWhitelisted(address contributor) public view returns (bool) {
+        return whitelist[contributor];
+    }
+
     // Distribute the tokens in the contract to the contributors/creators
     function distributeTokens(address token) public onlyPoolOwner() {
         // Is this method already being called?
-        require(!active);
-        active = true;
+        require(!distributionActive);
+        distributionActive = true;
 
         // Get the token address
         ERC677 erc677 = ERC677(token);
@@ -208,7 +223,7 @@ contract PoolOwners is Ownable {
         }
         // Add the current balance on to the total returned
         tokenBalance[token] = SafeMath.add(tokenBalance[token], currentBalance);
-        active = false;
+        distributionActive = false;
 
         // Emit the event
         TokenDistribution(token, currentBalance);
