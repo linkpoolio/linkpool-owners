@@ -11,7 +11,7 @@ let secondOwner;
 module.exports = async (deployer, network) => {
     switch(network) {
     default:
-        ethWallet = accounts[45];
+        ethWallet = accounts[46];
         contractOwner = accounts[0];
         firstPoolOwner = accounts[1];
         secondPoolOwner = accounts[2];

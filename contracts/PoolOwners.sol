@@ -6,7 +6,7 @@ import "./SafeMath.sol";
 
 contract PoolOwners is Ownable {
 
-    mapping(int256 => address)  private ownersAddresses;
+    mapping(int256 => address)  private ownerAddresses;
     mapping(address => bool)    private whitelist;
 
     mapping(address => uint256) public ownerPercentages;
@@ -15,7 +15,8 @@ contract PoolOwners is Ownable {
 
     mapping(address => mapping(address => uint256)) private balances;
 
-    int256 private totalOwners = 0;
+    int256 public totalOwners = 0;
+
     bool   private contributionStarted = false;
     bool   private distributionActive = false;
 
@@ -45,8 +46,8 @@ contract PoolOwners is Ownable {
         Modifiers
      */
 
-    modifier onlyPoolOwner() {
-        require(ownerShareTokens[msg.sender] != 0);
+    modifier onlyWhitelisted() {
+        require(whitelist[msg.sender]);
         _;
     }
 
@@ -98,8 +99,8 @@ contract PoolOwners is Ownable {
             ownerShareTokens[sender] = SafeMath.add(ownerShareTokens[sender], msg.value);
             ownerPercentages[sender] = SafeMath.add(share, ownerPercentages[sender]);
         } else { // New contributor
-            ownersAddresses[totalOwners] = sender;
-            totalOwners = totalOwners + 1;
+            ownerAddresses[totalOwners] = sender;
+            totalOwners += 1;
             ownerPercentages[sender] = share;
             ownerShareTokens[sender] = msg.value;
         }
@@ -136,15 +137,16 @@ contract PoolOwners is Ownable {
         require(!locked);
 
         if (ownerShareTokens[owner] == 0) {
-            ownersAddresses[totalOwners] = owner;
-            totalOwners = totalOwners + 1;
+            whitelist[owner] = true;
+            ownerAddresses[totalOwners] = owner;
+            totalOwners += 1;
         }
         ownerShareTokens[owner] = value;
         ownerPercentages[owner] = percent(value, valuation, 5);
     }
 
     // Non-Standard token transfer, doesn't confine to any ERC
-    function sendOwnership(address receiver, uint256 amount) public onlyPoolOwner() {
+    function sendOwnership(address receiver, uint256 amount) public onlyWhitelisted() {
         // Require they have an actual balance
         require(ownerShareTokens[msg.sender] > 0);
 
@@ -156,13 +158,19 @@ contract PoolOwners is Ownable {
 
         // Remove the owner if the share is now 0
         if (ownerShareTokens[msg.sender] == 0) {
-            delete ownerShareTokens[msg.sender];
-            delete ownerPercentages[msg.sender];
+            ownerPercentages[msg.sender] = 0;
+            whitelist[receiver] = false; 
+            
         } else { // Recalculate percentage
             ownerPercentages[msg.sender] = percent(ownerShareTokens[msg.sender], valuation, 5);
         }
-        
+
         // Add the new share holder
+        if (ownerShareTokens[receiver] == 0) {
+            whitelist[receiver] = true;
+            ownerAddresses[totalOwners] = receiver;
+            totalOwners += 1;
+        }
         ownerShareTokens[receiver] = SafeMath.add(ownerShareTokens[receiver], amount);
         ownerPercentages[receiver] = SafeMath.add(ownerPercentages[receiver], percent(amount, valuation, 5));
 
@@ -176,7 +184,7 @@ contract PoolOwners is Ownable {
     }
 
     // Distribute the tokens in the contract to the contributors/creators
-    function distributeTokens(address token) public onlyPoolOwner() {
+    function distributeTokens(address token) public onlyWhitelisted() {
         // Is this method already being called?
         require(!distributionActive);
         distributionActive = true;
@@ -195,7 +203,7 @@ contract PoolOwners is Ownable {
         // This is GAS expensive, but unless complex more bug prone logic was added there is no alternative
         // This is due to the percentages needed to be calculated for all at once, or the amounts would differ
         for (int256 i = 0; i < totalOwners; i++) {
-            address owner = ownersAddresses[i];
+            address owner = ownerAddresses[i];
 
             // If the owner still has a share
             if (ownerShareTokens[owner] > 0) {
@@ -210,7 +218,7 @@ contract PoolOwners is Ownable {
     }
 
     // Withdraw tokens from the owners balance
-    function withdrawTokens(address token, uint256 amount) public onlyPoolOwner() {
+    function withdrawTokens(address token, uint256 amount) public {
         // Can't withdraw nothing
         require(amount > 0);
 
@@ -235,7 +243,7 @@ contract PoolOwners is Ownable {
     }
 
     // Get the owners token balance
-    function getTokenBalance(address token) public view returns (uint256) {
+    function getOwnerBalance(address token) public view returns (uint256) {
         return balances[msg.sender][token];
     }
 
