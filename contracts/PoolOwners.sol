@@ -1,4 +1,4 @@
-pragma solidity ^0.4.2;
+pragma solidity ^0.4.3;
 
 import "./Ownable.sol";
 import "./ERC677.sol";
@@ -7,10 +7,11 @@ import "./SafeMath.sol";
 contract PoolOwners is Ownable {
 
     mapping(int256 => address)  private ownersAddresses;
-    mapping(address => uint256) private ownerPercentages;
-    mapping(address => uint256) private ownerShareTokens;
-    mapping(address => uint256) private tokenBalance;
     mapping(address => bool)    private whitelist;
+
+    mapping(address => uint256) public ownerPercentages;
+    mapping(address => uint256) public ownerShareTokens;
+    mapping(address => uint256) public tokenBalance;
 
     mapping(address => mapping(address => uint256)) private balances;
 
@@ -22,9 +23,10 @@ contract PoolOwners is Ownable {
     uint256 private ethWei = 1000000000000000000; // 1 ether in wei
     uint256 private valuation = ethWei * 4000; // 1 ether * 4000
     uint256 private hardCap = ethWei * 1000; // 1 ether * 1000
-    uint256 private totalContributed = 0;
     address private wallet;
     bool    private locked = false;
+
+    uint256 public totalContributed = 0;
 
     // The contract hard-limit is 0.04 ETH due to the percentage precision, lowest % possible is 0.001%
     // It's been set at 0.2 ETH to try and minimise the sheer number of contributors as that would up the distribution GAS cost
@@ -37,6 +39,7 @@ contract PoolOwners is Ownable {
     event Contribution(address indexed sender, uint256 share, uint256 amount);
     event TokenDistribution(address indexed token, uint256 amount);
     event TokenWithdrawal(address indexed token, address indexed owner, uint256 amount);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner, uint256 amount);
 
     /**
         Modifiers
@@ -51,7 +54,7 @@ contract PoolOwners is Ownable {
         Constructor
      */
 
-    function PoolOwners(address _wallet) public {
+    constructor(address _wallet) public {
         wallet = _wallet;
     }
 
@@ -59,6 +62,7 @@ contract PoolOwners is Ownable {
         Contribution Methods
      */
 
+    // Fallback, redirects to contribute
     function() public payable { contribute(msg.sender); }
 
     function contribute(address sender) internal {
@@ -71,17 +75,17 @@ contract PoolOwners is Ownable {
         // Make sure they're in the whitelist
         require(whitelist[sender]);
 
+        // Assert that the contribution is above or equal to the minimum contribution
+        require(msg.value >= minimumContribution);
+
         // Make sure the contribution isn't above the hard cap
         require(hardCap >= msg.value);
-
-        // Make sure the contribution doesn't exceed the hardCap
-        require(hardCap >= SafeMath.add(totalContributed, msg.value));
 
         // Ensure the amount contributed is cleanly divisible by the minimum contribution
         require((msg.value % minimumContribution) == 0);
 
-        // Assert that the contribution is above or equal to the minimum contribution
-        require(msg.value >= minimumContribution);
+        // Make sure the contribution doesn't exceed the hardCap
+        require(hardCap >= SafeMath.add(totalContributed, msg.value));
 
         // Increase the total contributed
         totalContributed = SafeMath.add(totalContributed, msg.value);
@@ -104,7 +108,7 @@ contract PoolOwners is Ownable {
         wallet.transfer(msg.value);
 
         // Fire event
-        Contribution(sender, share, msg.value);
+        emit Contribution(sender, share, msg.value);
     }
 
     // Add a wallet to the whitelist
@@ -140,7 +144,10 @@ contract PoolOwners is Ownable {
     }
 
     // Non-Standard token transfer, doesn't confine to any ERC
-    function transferOwnership(address receiver, uint256 amount) public onlyPoolOwner() {
+    function sendOwnership(address receiver, uint256 amount) public onlyPoolOwner() {
+        // Require they have an actual balance
+        require(ownerShareTokens[msg.sender] > 0);
+
         // Require the amount to be equal or less to their shares
         require(ownerShareTokens[msg.sender] >= amount);
 
@@ -158,42 +165,14 @@ contract PoolOwners is Ownable {
         // Add the new share holder
         ownerShareTokens[receiver] = SafeMath.add(ownerShareTokens[receiver], amount);
         ownerPercentages[receiver] = SafeMath.add(ownerPercentages[receiver], percent(amount, valuation, 5));
+
+        emit OwnershipTransferred(msg.sender, receiver, amount);
     }
 
     // Lock the shares so contract owners cannot change them
     function lockShares() public onlyOwner() {
         require(!locked);
         locked = true;
-    }
-
-    // Get total ETH contribution
-    function getTotalContributed() public view returns (uint256) {
-        return totalContributed;
-    }
-
-    // Get the share of an owner, only if you're one of the share holders
-    function getOwnerShare() public view onlyPoolOwner() returns (uint256) {
-        return ownerPercentages[msg.sender];
-    }
-
-    // Get an owner share balance (contribution amount)
-    function getOwnerShareBalance() public view onlyPoolOwner() returns (uint256) {
-        return ownerShareTokens[msg.sender];
-    }
-
-    // Get the owners token balance
-    function getOwnerBalance(address token) public view returns (uint256) {
-        return balances[msg.sender][token];
-    }
-
-    // Get the total returned in the contract
-    function getTotalReturned(address token) public view returns (uint256) {
-        return tokenBalance[token];
-    }
-
-    // Is an account whitelisted?
-    function isWhitelisted(address contributor) public view returns (bool) {
-        return whitelist[contributor];
     }
 
     // Distribute the tokens in the contract to the contributors/creators
@@ -209,6 +188,9 @@ contract PoolOwners is Ownable {
         uint256 currentBalance = erc677.balanceOf(this) - tokenBalance[token];
         require(currentBalance > ethWei * 20);
 
+        // Add the current balance on to the total returned
+        tokenBalance[token] = SafeMath.add(tokenBalance[token], currentBalance);
+
         // Loop through stakers and add the earned shares
         // This is GAS expensive, but unless complex more bug prone logic was added there is no alternative
         // This is due to the percentages needed to be calculated for all at once, or the amounts would differ
@@ -221,12 +203,10 @@ contract PoolOwners is Ownable {
                 balances[owner][token] = SafeMath.add(SafeMath.div(SafeMath.mul(currentBalance, ownerPercentages[owner]), 100000), balances[owner][token]);
             }
         }
-        // Add the current balance on to the total returned
-        tokenBalance[token] = SafeMath.add(tokenBalance[token], currentBalance);
         distributionActive = false;
 
         // Emit the event
-        TokenDistribution(token, currentBalance);
+        emit TokenDistribution(token, currentBalance);
     }
 
     // Withdraw tokens from the owners balance
@@ -246,7 +226,17 @@ contract PoolOwners is Ownable {
         require(erc677.transfer(msg.sender, amount) == true);
 
         // Emit the event
-        TokenWithdrawal(token, msg.sender, amount);
+        emit TokenWithdrawal(token, msg.sender, amount);
+    }
+
+    // Is an account whitelisted?
+    function isWhitelisted(address contributor) public view returns (bool) {
+        return whitelist[contributor];
+    }
+
+    // Get the owners token balance
+    function getTokenBalance(address token) public view returns (uint256) {
+        return balances[msg.sender][token];
     }
 
     /**
