@@ -483,6 +483,24 @@ contract('PoolOwners', accounts => {
     });
 
     /**
+     * Ensure that the minimum distribution is enforced
+     */
+    it("shouldn't be able to distribute tokens under the minimum", async() => {
+        // Default is 20, so up it to 1000 to test setting it
+        await poolOwners.setMinimumForDistribution(1000, { from: accounts[0] });
+
+        // Send LINK tokens to the owners address, minimum is 20
+        await linkToken.transfer(PoolOwners.address, web3.toWei(500, 'ether'), { from: accounts[0] });
+
+        await assertThrowsAsync(
+            async() => {
+                await poolOwners.distributeTokens(LinkToken.address, { from: accounts[1] })
+            },
+            "revert"
+        );
+    });
+
+    /**
      * Negative tests
      */
 

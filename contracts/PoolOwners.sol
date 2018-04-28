@@ -6,7 +6,7 @@ import "./SafeMath.sol";
 
 contract PoolOwners is Ownable {
 
-    mapping(int256 => address)  private ownerAddresses;
+    mapping(uint64 => address)  private ownerAddresses;
     mapping(address => bool)    private whitelist;
 
     mapping(address => uint256) public ownerPercentages;
@@ -15,7 +15,8 @@ contract PoolOwners is Ownable {
 
     mapping(address => mapping(address => uint256)) private balances;
 
-    int256 public totalOwners = 0;
+    uint64  public totalOwners = 0;
+    uint16  public distributionMinimum = 20;
 
     bool   private contributionStarted = false;
     bool   private distributionActive = false;
@@ -194,7 +195,7 @@ contract PoolOwners is Ownable {
 
         // Has the contract got a balance?
         uint256 currentBalance = erc677.balanceOf(this) - tokenBalance[token];
-        require(currentBalance > ethWei * 20);
+        require(currentBalance > ethWei * distributionMinimum);
 
         // Add the current balance on to the total returned
         tokenBalance[token] = SafeMath.add(tokenBalance[token], currentBalance);
@@ -202,7 +203,7 @@ contract PoolOwners is Ownable {
         // Loop through stakers and add the earned shares
         // This is GAS expensive, but unless complex more bug prone logic was added there is no alternative
         // This is due to the percentages needed to be calculated for all at once, or the amounts would differ
-        for (int256 i = 0; i < totalOwners; i++) {
+        for (uint64 i = 0; i < totalOwners; i++) {
             address owner = ownerAddresses[i];
 
             // If the owner still has a share
@@ -225,7 +226,7 @@ contract PoolOwners is Ownable {
         // Assert they're withdrawing what is in their balance
         require(balances[msg.sender][token] >= amount);
 
-        // Subsitute the amounts
+        // Substitute the amounts
         balances[msg.sender][token] = SafeMath.sub(balances[msg.sender][token], amount);
         tokenBalance[token] = SafeMath.sub(tokenBalance[token], amount);
 
@@ -235,6 +236,11 @@ contract PoolOwners is Ownable {
 
         // Emit the event
         emit TokenWithdrawal(token, msg.sender, amount);
+    }
+
+    // Sets the minimum balance needed for token distribution
+    function setDistributionMinimum(uint16 minimum) public onlyOwner() {
+        distributionMinimum = minimum;
     }
 
     // Is an account whitelisted?
