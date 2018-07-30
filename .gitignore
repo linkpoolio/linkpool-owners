@@ -12,6 +12,9 @@ build
 build_webpack
 scripts
 
+# jetbrains
+.idea/
+
 # misc
 .DS_Store
 .env

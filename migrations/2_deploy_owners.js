@@ -16,7 +16,7 @@ module.exports = async(deployer, network, accounts) => {
             break;
         default:
             contractOwner = accounts[0];
-            ethWallet = accounts[46];
+            ethWallet = accounts[299];
             firstPoolOwner = accounts[1];
             secondPoolOwner = accounts[2];
             break;
