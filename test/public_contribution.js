@@ -32,12 +32,14 @@ contract('PoolOwners', accounts => {
      */
     async function claimAllTokens() {
         let totalOwners = await poolOwners.totalOwners.call();
+        let distributionId = await poolOwners.totalDistributions.call();
         for (let i = 0; i < totalOwners; i++) {
-            let address = await poolOwners.ownerAddresses.call(i);
-            let distributionId = await poolOwners.totalDistributions.call();
-            let claimed = await poolOwners.claimedOwners.call(distributionId, address);
-            if (!claimed) {
-                await poolOwners.claimTokens(LinkToken.address, address);
+            let address = await poolOwners.getOwnerAddress(i);
+            if (address != "0x0000000000000000000000000000000000000000") {
+                let claimed = await poolOwners.hasClaimed(address, distributionId);
+                if (!claimed) {
+                    await poolOwners.claimTokens(address);
+                }
             }
         }
     }
@@ -57,12 +59,12 @@ contract('PoolOwners', accounts => {
      */
     it("creators should make up of 75% of the share holding", async() => {
         // Get the shares of the creators
-        let firstCreator = await poolOwners.ownerPercentages.call(accounts[1]);
-        let secondCreator = await poolOwners.ownerPercentages.call(accounts[2]);
+        let firstCreator = await poolOwners.getOwner(accounts[1]);
+        let secondCreator = await poolOwners.getOwner(accounts[2]);
 
         // Assert they total up to 75%
-        assert.equal(37.5, firstCreator.toNumber() / 1000, "First creators share should equal 37.5%");
-        assert.equal(37.5, secondCreator.toNumber() / 1000, "Second creators share should equal 37.5%");
+        assert.equal(37.5, firstCreator[2].toNumber() / 1000, "First creators share should equal 37.5%");
+        assert.equal(37.5, secondCreator[2].toNumber() / 1000, "Second creators share should equal 37.5%");
     });
 
     /**
@@ -86,7 +88,7 @@ contract('PoolOwners', accounts => {
                     from: accounts[45],
                     to: PoolOwners.address,
                     value: web3.toWei(5, 'ether'),
-                    gas: 160000
+                    gas: 200000
                 });
             },
             "revert"
@@ -103,7 +105,7 @@ contract('PoolOwners', accounts => {
                     from: accounts[3],
                     to: PoolOwners.address,
                     value: web3.toWei(5, 'ether'),
-                    gas: 160000
+                    gas: 200000
                 });
             },
             "revert"
@@ -123,7 +125,7 @@ contract('PoolOwners', accounts => {
                     from: accounts[3],
                     to: PoolOwners.address,
                     value: web3.toWei(1.3, 'ether'),
-                    gas: 160000
+                    gas: 200000
                 });
             },
             "revert"
@@ -139,14 +141,14 @@ contract('PoolOwners', accounts => {
             from: accounts[3],
             to: PoolOwners.address,
             value: web3.toWei(0.2, 'ether'),
-            gas: 160000
+            gas: 200000
         });
 
         // Get the share of the contributor
-        let contributorShare = await poolOwners.ownerPercentages.call(accounts[3]);
+        let contributorShare = await poolOwners.getOwner(accounts[3]);
 
         // Assert it equals 0.005%
-        assert.equal(0.005, contributorShare.toNumber() / 1000, "Contribution of 0.2 ETH should result in a 0.005% share");
+        assert.equal(0.005, contributorShare[2].toNumber() / 1000, "Contribution of 0.2 ETH should result in a 0.005% share");
     });
     
     /**
@@ -158,14 +160,14 @@ contract('PoolOwners', accounts => {
             from: accounts[4],
             to: PoolOwners.address,
             value: web3.toWei(16, 'ether'),
-            gas: 160000
+            gas: 200000
         });
 
         // Get the share of the contributor
-        let contributorShare = await poolOwners.ownerPercentages.call(accounts[4]);
+        let contributorShare = await poolOwners.getOwner(accounts[4]);
 
         // Assert it equals 0.4%
-        assert.equal(0.4, contributorShare.toNumber() / 1000, "Contribution of 20 ETH should result in a 0.4% share");
+        assert.equal(0.4, contributorShare[2].toNumber() / 1000, "Contribution of 20 ETH should result in a 0.4% share");
     });
 
     /**
@@ -177,14 +179,14 @@ contract('PoolOwners', accounts => {
             from: accounts[5],
             to: PoolOwners.address,
             value: web3.toWei(20, 'ether'),
-            gas: 160000
+            gas: 200000
         });
 
         // Get the share of the contributor
-        let contributorShare = await poolOwners.ownerPercentages.call(accounts[5]);
+        let contributorShare = await poolOwners.getOwner(accounts[5]);
 
         // Assert it equals 0.5%
-        assert.equal(0.5, contributorShare.toNumber() / 1000, "Contribution of 25 ETH should result in a 0.5% share");
+        assert.equal(0.5, contributorShare[2].toNumber() / 1000, "Contribution of 25 ETH should result in a 0.5% share");
     });
 
     /**
@@ -196,14 +198,14 @@ contract('PoolOwners', accounts => {
             from: accounts[6],
             to: PoolOwners.address,
             value: web3.toWei(13.6, 'ether'),
-            gas: 160000
+            gas: 200000
         });
 
         // Get the share of the contributor
-        let contributorShare = await poolOwners.ownerPercentages.call(accounts[6]);
+        let contributorShare = await poolOwners.getOwner(accounts[6]);
 
         // Assert it equals 1.7%
-        assert.equal(0.34, contributorShare.toNumber() / 1000, "Contribution of 17 ETH should result in a 0.34% share");
+        assert.equal(0.34, contributorShare[2].toNumber() / 1000, "Contribution of 17 ETH should result in a 0.34% share");
     });
 
     /**
@@ -215,14 +217,14 @@ contract('PoolOwners', accounts => {
             from: accounts[3],
             to: PoolOwners.address,
             value: web3.toWei(0.2, 'ether'),
-            gas: 160000
+            gas: 200000
         });
 
         // Get the share of the contributor
-        let contributorShare = await poolOwners.ownerPercentages.call(accounts[3]);
+        let contributorShare = await poolOwners.getOwner(accounts[3]);
 
         // Assert it equals 0.01%
-        assert.equal(0.01, contributorShare.toNumber() / 1000, "Contribution of another 0.2 ETH should result in a 0.01% share in total");
+        assert.equal(0.01, contributorShare[2].toNumber() / 1000, "Contribution of another 0.2 ETH should result in a 0.01% share in total");
     });
 
     /**
@@ -245,7 +247,7 @@ contract('PoolOwners', accounts => {
             from: accounts[7],
             to: PoolOwners.address,
             value: web3.toWei(50, 'ether'),
-            gas: 160000
+            gas: 200000
         });
         // Loop through until we have 1000 ETH staked
         for (i = 8; i < 44; i++) {
@@ -253,7 +255,7 @@ contract('PoolOwners', accounts => {
                 from: accounts[i],
                 to: PoolOwners.address,
                 value: web3.toWei(25, 'ether'),
-                gas: 160000
+                gas: 200000
             });
         }
         // Get the total contributed
@@ -386,12 +388,12 @@ contract('PoolOwners', accounts => {
         await poolOwners.sendOwnership(accounts[3], web3.toWei(500, 'ether'), { from: accounts[1] });
 
         // Assert the owners share is now 25%
-        let share = await poolOwners.ownerPercentages.call(accounts[1]);
-        assert.equal(25, share.toNumber() / 1000, "Owners share should be 25%");
+        let share = await poolOwners.getOwner(accounts[1]);
+        assert.equal(25, share[2].toNumber() / 1000, "Owners share should be 25%");
 
         // Assert the receivers share has increased to 12.7%
-        share = await poolOwners.ownerPercentages.call(accounts[3]);
-        assert.equal(12.51, share.toNumber() / 1000, "Receivers share should be 12.51%");
+        share = await poolOwners.getOwner(accounts[3]);
+        assert.equal(12.51, share[2].toNumber() / 1000, "Receivers share should be 12.51%");
     });
 
     /**
@@ -402,12 +404,12 @@ contract('PoolOwners', accounts => {
         await poolOwners.sendOwnership(accounts[44], web3.toWei(16, 'ether'), { from: accounts[4] });
 
         // Assert the owners share is now 0.4%
-        let share = await poolOwners.ownerPercentages.call(accounts[44]);
-        assert.equal(0.4, share.toNumber() / 1000, "Owners share should be 0.4%");
+        let share = await poolOwners.getOwner(accounts[44]);
+        assert.equal(0.4, share[2].toNumber() / 1000, "Owners share should be 0.4%");
 
-        // Assert the receivers share has gone to 0%
-        share = await poolOwners.ownerPercentages.call(accounts[4]);
-        assert.equal(0, share.toNumber(), "Receivers share should be 0%");
+        // Assert the senders share has gone to 0%
+        share = await poolOwners.getOwner(accounts[4]);
+        assert.equal(0, share[2].toNumber(), "Senders share should be 0%");
 
         // Assert the total owners has increased to 44
         owners = await poolOwners.totalOwners.call();
@@ -456,6 +458,10 @@ contract('PoolOwners', accounts => {
             ownerBalance = await poolOwners.getOwnerBalance(LinkToken.address, { from: accounts[i] });
             assert.equal(web3.fromWei(ownerBalance.toNumber(), 'ether'), 47.188271604375, "Total returned for the contributor is incorrect");
         }
+
+        // Assert that distribution has completed
+        let distributionActive = await poolOwners.distributionActive.call();
+        assert.equal(distributionActive, false, "Distribution should be completed after claiming all tokens");
     });
 
     it("should allow tokens to be claimed when withdrawing and distribution is active", async() => {
@@ -470,6 +476,24 @@ contract('PoolOwners', accounts => {
 
         // Claim all the rest
         await claimAllTokens();
+    });
+
+    it("should allow distribution when an owner transfers all his ownership away and then gets some back", async() => {
+        // Send 0.2% of the ownership back the original owner
+        await poolOwners.sendOwnership(accounts[4], web3.toWei(8, 'ether'), { from: accounts[44] });
+
+        // Send LINK tokens to the owners address
+        await linkToken.transfer(PoolOwners.address, web3.toWei(100, 'ether'), { from: accounts[0] });
+
+        // Distribute the tokens to the contributors
+        await poolOwners.distributeTokens(LinkToken.address, { from: accounts[1] });
+
+        // Claim all the rest
+        await claimAllTokens();
+        
+        // Assert that distribution has completed
+        let distributionActive = await poolOwners.distributionActive.call();
+        assert.equal(distributionActive, false, "Distribution should be completed after claiming all tokens");
     });
 
     /**
@@ -571,6 +595,20 @@ contract('PoolOwners', accounts => {
         );
     });
 
+    it("shouldn't be able to claim tokens twice", async() => {
+        await poolOwners.setDistributionMinimum(web3.toWei(20), { from: accounts[0] });
+        await linkToken.transfer(PoolOwners.address, web3.toWei(100, 'ether'), { from: accounts[0] });
+        await poolOwners.distributeTokens(LinkToken.address, { from: accounts[1] });
+        await poolOwners.claimTokens(accounts[1]);
+        await assertThrowsAsync(
+            async() => {
+                await poolOwners.claimTokens(accounts[1]);
+            },
+            "revert"
+        );
+        await claimAllTokens();
+    });
+
     it("shouldn't be able to contribute after the hard cap has been reached", async() => {
         await assertThrowsAsync(
             async() => {
@@ -578,7 +616,7 @@ contract('PoolOwners', accounts => {
                     from: accounts[3],
                     to: PoolOwners.address,
                     value: web3.toWei(5, 'ether'),
-                    gas: 160000
+                    gas: 200000
                 });
             },
             "revert"

@@ -1,4 +1,5 @@
 const Web3Utils = require('web3-utils');
+const HDWalletProvider = require("truffle-hdwallet-provider-privkey");
 
 // Totally Neccessary ASCII Art of LinkPool
 const art = require('ascii-art');
