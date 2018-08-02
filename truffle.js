@@ -1,5 +1,4 @@
 const Web3Utils = require('web3-utils');
-const HDWalletProvider = require("truffle-hdwallet-provider-privkey");
 
 // Totally Neccessary ASCII Art of LinkPool
 const art = require('ascii-art');
@@ -17,6 +16,12 @@ module.exports = {
       network_id: "*", // Match any network id
       gas: 6712390,
       gasPrice: 0
+    }
+  },
+  solc: {
+    optimizer: {
+      enabled: true,
+      runs: 200
     }
   }
 };
