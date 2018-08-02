@@ -187,7 +187,7 @@ contract PoolOwners is Ownable {
         }
         if (r.shareTokens == 0) {
             whitelist[_receiver] = true;
-            ownerMap.insert(totalOwners, uint(_receiver));
+            require(ownerMap.insert(totalOwners, uint(_receiver)) == false);
             totalOwners += 1;
         }
         r.shareTokens = r.shareTokens.add(_amount);
