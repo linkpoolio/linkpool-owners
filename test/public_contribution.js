@@ -45,6 +45,14 @@ contract('PoolOwners', accounts => {
     }
 
     /**
+     * Claims all tokens when distribution has started using the batch claim function
+     */
+    async function batchClaimAll() {
+        let totalOwners = await poolOwners.totalOwners.call();
+        await poolOwners.batchClaim(0, totalOwners, { from: accounts[1] });
+    }
+
+    /**
      * Gets the contract instances for public contribution
      */
     before(async() => {
@@ -297,7 +305,7 @@ contract('PoolOwners', accounts => {
         assert.equal(web3.fromWei(tokenBalance.toNumber(), 'ether'), 100, "Token balance for the owners should be 100 tokens");
 
         // Claim all the tokens on behalf of the owners
-        await claimAllTokens();
+        await batchClaimAll();
 
         // Assert the distribution of tokens is correct
         let ownerBalance = await poolOwners.getOwnerBalance(LinkToken.address, { from: accounts[1] });
@@ -434,8 +442,11 @@ contract('PoolOwners', accounts => {
      *  Should be able to transfer all of a wallets ownership of LinkPool to another address
      */
     it("should be able to transfer 0.4% ownership to a new address", async() => {
-        // Transfer 12.5% of the share 
-        await poolOwners.sendOwnership(accounts[44], web3.toWei(16, 'ether'), { from: accounts[4] });
+        // Increase the allowance of the sender
+        await poolOwners.increaseAllowance(accounts[0], web3.toWei(16, 'ether'), { from: accounts[4] });
+
+        // Transfer 12.5% of the share on behalf of the owner
+        await poolOwners.sendOwnershipFrom(accounts[4], accounts[44], web3.toWei(16, 'ether'), { from: accounts[0] });
 
         // Assert the owners share is now 0.4%
         let share = await poolOwners.owners.call(accounts[44]);
@@ -473,7 +484,7 @@ contract('PoolOwners', accounts => {
         assert.equal(web3.fromWei(tokenBalance.toNumber(), 'ether'), 10100.1234567, "Token balance for the owners should be 7550.1234567 tokens");
 
         // Claim all the tokens on behalf of the owners
-        await claimAllTokens();
+        await batchClaimAll();
 
         // Assert the distribution of tokens is correct (manually calculated expected from %)
         let ownerBalance = await poolOwners.getOwnerBalance(LinkToken.address, { from: accounts[1] });
@@ -547,9 +558,9 @@ contract('PoolOwners', accounts => {
         assert.equal(isOwner, true, "Old address should still be an owner");
 
         // Claim all the rest
-        await claimAllTokens();
+        await batchClaimAll();
         
-        // Assert that distribution has completed
+        // Assert that distribution has complete
         let distributionActive = await poolOwners.distributionActive.call();
         assert.equal(distributionActive, false, "Distribution should be completed after claiming all tokens");
     });
@@ -678,6 +689,6 @@ contract('PoolOwners', accounts => {
             },
             "revert"
         );
-        await claimAllTokens();
+        await batchClaimAll();
     });
 });

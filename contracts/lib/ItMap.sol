@@ -30,32 +30,35 @@ library itmap {
     
     function remove(itmap storage self, uint key) internal returns (bool success) {
         entry storage e = self.data[key];
-        if (e.keyIndex == 0)
+
+        if (e.keyIndex == 0) {
             return false;
-        
+        }
+
         if (e.keyIndex < self.keys.length) {
             // Move an existing element into the vacated key slot.
             self.data[self.keys[self.keys.length - 1]].keyIndex = e.keyIndex;
             self.keys[e.keyIndex - 1] = self.keys[self.keys.length - 1];
-            self.keys.length -= 1;
-            delete self.data[key];
-            return true;
         }
+
+        self.keys.length -= 1;
+        delete self.data[key];
+        return true;
     }
     
-    function contains(itmap storage self, uint key) internal view returns (bool exists) {
+    function contains(itmap storage self, uint key) internal constant returns (bool exists) {
         return self.data[key].keyIndex > 0;
     }
     
-    function size(itmap storage self) internal view returns (uint) {
+    function size(itmap storage self) internal constant returns (uint) {
         return self.keys.length;
     }
     
-    function get(itmap storage self, uint key) internal view returns (uint) {
+    function get(itmap storage self, uint key) internal constant returns (uint) {
         return self.data[key].value;
     }
     
-    function getKey(itmap storage self, uint idx) internal view returns (uint) {
+    function getKey(itmap storage self, uint idx) internal constant returns (uint) {
         return self.keys[idx];
     }
 }
