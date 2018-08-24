@@ -445,8 +445,16 @@ contract('PoolOwners', accounts => {
         // Increase the allowance of the sender
         await poolOwners.increaseAllowance(accounts[0], web3.toWei(16, 'ether'), { from: accounts[4] });
 
+        // Assert the allowance has increased
+        let allowance = await poolOwners.getAllowance(accounts[4], accounts[0]);
+        assert.equal(16, web3.fromWei(allowance.toNumber(), 'ether'), "Allowance should be 16 ether after increase");
+
         // Transfer 12.5% of the share on behalf of the owner
         await poolOwners.sendOwnershipFrom(accounts[4], accounts[44], web3.toWei(16, 'ether'), { from: accounts[0] });
+
+        // Assert the allowance has decreased
+        allowance = await poolOwners.getAllowance(accounts[4], accounts[0]);
+        assert.equal(0, allowance.toNumber(), "Allowance should be 0 after transfer");
 
         // Assert the owners share is now 0.4%
         let share = await poolOwners.owners.call(accounts[44]);
@@ -599,6 +607,10 @@ contract('PoolOwners', accounts => {
         assert.equal(web3.fromWei(tokenBalance.toNumber(), 'ether'), 0, "Token balance for the owners should be 0 tokens after full withdrawal");
     });
 
+    /**
+     * Negative tests
+     */
+
     it("shouldn't be able to contribute after the hard cap has been reached", async() => {
         await assertThrowsAsync(
             async() => {
@@ -613,9 +625,6 @@ contract('PoolOwners', accounts => {
         );
     });
 
-    /**
-     * Ensure that the shares can be locked once contributions have been made
-     */
     it("should be able to lock the shares inside the contract", async() => {
         // Lock the shares
         await poolOwners.lockShares({ from: accounts[0] });
@@ -629,9 +638,15 @@ contract('PoolOwners', accounts => {
         );
     });
 
-    /**
-     * Ensure that the minimum distribution is enforced
-     */
+    it("shouldn't be able to send ownership on behalf with no allownace", async() => {
+        await assertThrowsAsync(
+            async() => {
+                await poolOwners.sendOwnershipFrom(accounts[44], accounts[4], web3.toWei(16, 'ether'), { from: accounts[0] });
+            },
+            "revert"
+        );
+    });
+
     it("shouldn't be able to distribute tokens under the minimum", async() => {
         // Default is 20, so up it to 1000 to test setting it
         await poolOwners.setDistributionMinimum(web3.toWei(1000), { from: accounts[0] });
@@ -646,10 +661,6 @@ contract('PoolOwners', accounts => {
             "revert"
         );
     });
-
-    /**
-     * Negative tests
-     */
 
     it("shouldn't allow a contributor to withdraw more tokens than their balance", async() => {
         await assertThrowsAsync(

@@ -86,7 +86,7 @@ contract PoolOwners is Ownable {
         @dev Transfers tokens to LP wallet address
      */
     function() public payable {
-        require(contributionStarted, "Contribution phase hasn't started");
+        require(contributionStarted, "Contribution is not active");
         require(whitelist[msg.sender], "You are not whitelisted");
         contribute(msg.sender, msg.value); 
         wallet.transfer(msg.value);
@@ -121,7 +121,7 @@ contract PoolOwners is Ownable {
             o.percentage = o.percentage.add(share);
         } else { // New owner
             o.key = totalOwners;
-            require(ownerMap.insert(o.key, uint(_sender)) == false);
+            require(ownerMap.insert(o.key, uint(_sender)) == false, "Map replacement detected, fatal error");
             totalOwners += 1;
             o.shareTokens = _amount;
             o.percentage = share;
@@ -207,6 +207,7 @@ contract PoolOwners is Ownable {
         Owner storage o = owners[_owner];
         Owner storage r = owners[_receiver];
 
+        require(_owner != _receiver, "You can't send to yourself");
         require(_receiver != address(0), "Ownership cannot be blackholed");
         require(o.shareTokens > 0, "You don't have any ownership");
         require(o.shareTokens >= _amount, "The amount exceeds what you have");
@@ -412,10 +413,11 @@ contract PoolOwners is Ownable {
 
     /**
         @dev Returns the allowance amount for a sender address
+        @param _owner The address of the owner
         @param _sender The address of the sender on an owners behalf
      */
-    function getAllowance(address _sender) public view returns (uint256) {
-        return allowance[msg.sender][_sender];
+    function getAllowance(address _owner, address _sender) public view returns (uint256) {
+        return allowance[_owner][_sender];
     }
 
     /**
