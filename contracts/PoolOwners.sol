@@ -1,13 +1,13 @@
 pragma solidity ^0.4.3;
 
 import "./std/Ownable.sol";
-import "./std/ERC677.sol";
+import "./std/ERC20.sol";
 import "./std/SafeMath.sol";
 
 import "./lib/ItMap.sol";
 
 /**
-    @title OwnersReceiver, same as `transferAndCall` in ERC677
+    @title OwnersReceiver for transfer and calls
  */
 contract OwnersReceiver {
     function onOwnershipTransfer(address _sender, uint _value, bytes _data) public;
@@ -21,35 +21,17 @@ contract PoolOwners is Ownable {
     using SafeMath for uint256;
     using itmap for itmap.itmap;
 
-    struct Owner {
-        uint256 key;
-        uint256 percentage;
-        uint256 shareTokens;
-        mapping(address => uint256) balance;
-    }
-    mapping(address => Owner) public owners;
+    itmap.itmap ownerMap;
 
-    struct Distribution {
-        address token;
-        uint256 amount;
-        uint256 owners;
-        uint256 claimed;
-        mapping(address => bool) claimedAddresses;
-    }
-    mapping(uint256 => Distribution) public distributions;
+    uint distribution = 1;
+    address dToken = address(0);
+    bool dActive = false;
 
     mapping(address => mapping(address => uint256)) allowance;
     mapping(address => bool)    public tokenWhitelist;
-    mapping(address => uint256) public tokenBalance;
-    mapping(address => uint256) public totalReturned;
     mapping(address => bool)    public whitelist;
-    mapping(address => bool)    public allOwners;
-
-    itmap.itmap ownerMap;
     
     uint256 public totalContributed     = 0;
-    uint256 public totalOwners          = 0;
-    uint256 public totalDistributions   = 0;
     bool    public distributionActive   = false;
     uint256 public distributionMinimum  = 20 ether;
     uint256 public precisionMinimum     = 0.04 ether;
@@ -61,14 +43,13 @@ contract PoolOwners is Ownable {
     uint256 private hardCap             = 1000 ether;
 
     event Contribution(address indexed sender, uint256 share, uint256 amount);
-    event ClaimedTokens(address indexed owner, address indexed token, uint256 amount, uint256 claimedStakers, uint256 distributionId);
-    event TokenDistributionActive(address indexed token, uint256 amount, uint256 distributionId, uint256 amountOfOwners);
+    event TokenDistributionActive(address indexed token, uint256 amount, uint256 amountOfOwners);
     event TokenWithdrawal(address indexed token, address indexed owner, uint256 amount);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner, uint256 amount);
-    event TokenDistributionComplete(address indexed token, uint256 amountOfOwners);
+    event TokenDistributionComplete(address indexed token, uint amount, uint256 amountOfOwners);
 
     modifier onlyPoolOwner() {
-        require(allOwners[msg.sender], "You are not authorised to call this function");
+        require(ownerMap.get(uint(msg.sender)) != 0, "You are not authorised to call this function");
         _;
     }
 
@@ -105,6 +86,7 @@ contract PoolOwners is Ownable {
         @param _amount The amount that the owner has sent
      */
     function contribute(address _sender, uint256 _amount) private {
+        require(is128Bit(_amount), "Contribution amount isn't 128bit or smaller");
         require(!locked, "Crowdsale period over, contribution is locked");
         require(!distributionActive, "Cannot contribute when distribution is active");
         require(_amount >= precisionMinimum, "Amount needs to be above the minimum contribution");
@@ -115,17 +97,13 @@ contract PoolOwners is Ownable {
         totalContributed = totalContributed.add(_amount);
         uint256 share = percent(_amount, valuation, 5);
 
-        Owner storage o = owners[_sender];
-        if (o.percentage != 0) { // Existing owner
-            o.shareTokens = o.shareTokens.add(_amount);
-            o.percentage = o.percentage.add(share);
+        uint owner = ownerMap.get(uint(_sender));
+        if (owner != 0) { // Existing owner
+            share += owner >> 128;
+            uint amount = (owner << 128 >> 128).add(_amount);
+            require(ownerMap.insert(uint(_sender), share << 128 | amount), "Sender does not exist in the map");
         } else { // New owner
-            o.key = totalOwners;
-            require(ownerMap.insert(o.key, uint(_sender)) == false, "Map replacement detected, fatal error");
-            totalOwners += 1;
-            o.shareTokens = _amount;
-            o.percentage = share;
-            allOwners[_sender] = true;
+            require(!ownerMap.insert(uint(_sender), share << 128 | _amount), "Map replacement detected");
         }
 
         emit Contribution(_sender, share, _amount);
@@ -157,16 +135,18 @@ contract PoolOwners is Ownable {
     function setOwnerShare(address _owner, uint256 _value) public onlyOwner() {
         require(!locked, "Can't manually set shares, it's locked");
         require(!distributionActive, "Cannot set owners share when distribution is active");
+        require(is128Bit(_value), "Contribution value isn't 128bit or smaller");
 
-        Owner storage o = owners[_owner];
-        if (o.shareTokens == 0) {
-            allOwners[_owner] = true;
-            require(ownerMap.insert(totalOwners, uint(_owner)) == false, "Map replacement detected, fatal error");
-            o.key = totalOwners;
-            totalOwners += 1;
+        uint owner = ownerMap.get(uint(_owner));
+        uint share;
+        if (owner == 0) {
+            share = percent(_value, valuation, 5);
+            require(!ownerMap.insert(uint(_owner), share << 128 | _value), "Map replacement detected");
+        } else {
+            share = (owner >> 128).add(percent(_value, valuation, 5));
+            uint value = (owner << 128 >> 128).add(_value);
+            require(ownerMap.insert(uint(_owner), share << 128 | value), "Sender does not exist in the map");
         }
-        o.shareTokens = _value;
-        o.percentage = percent(_value, valuation, 5);
     }
 
     /**
@@ -200,39 +180,43 @@ contract PoolOwners is Ownable {
     function sendOwnershipFrom(address _owner, address _receiver, uint256 _amount) public {
         require(allowance[_owner][msg.sender] >= _amount, "Sender is not approved to send ownership of that amount");
         allowance[_owner][msg.sender] = allowance[_owner][msg.sender].sub(_amount);
+        if (allowance[_owner][msg.sender] == 0) {
+            delete allowance[_owner][msg.sender];
+        }
         _sendOwnership(_owner, _receiver, _amount);
     }
 
     function _sendOwnership(address _owner, address _receiver, uint256 _amount) private {
-        Owner storage o = owners[_owner];
-        Owner storage r = owners[_receiver];
+        uint o = ownerMap.get(uint(_owner));
+        uint r = ownerMap.get(uint(_receiver));
 
+        uint oTokens = o << 128 >> 128;
+        uint rTokens = r << 128 >> 128;
+
+        require(is128Bit(_amount), "Amount isn't 128bit or smaller");
         require(_owner != _receiver, "You can't send to yourself");
         require(_receiver != address(0), "Ownership cannot be blackholed");
-        require(o.shareTokens > 0, "You don't have any ownership");
-        require(o.shareTokens >= _amount, "The amount exceeds what you have");
+        require(oTokens > 0, "You don't have any ownership");
+        require(oTokens >= _amount, "The amount exceeds what you have");
         require(!distributionActive, "Distribution cannot be active when sending ownership");
         require(_amount % precisionMinimum == 0, "Your amount isn't divisible by the minimum precision amount");
 
-        o.shareTokens = o.shareTokens.sub(_amount);
+        oTokens = oTokens.sub(_amount);
 
-        if (o.shareTokens == 0) {
-            o.percentage = 0;
-            require(ownerMap.remove(o.key) == true, "Address doesn't exist in the map, fatal error");
+        if (oTokens == 0) {
+            require(ownerMap.remove(uint(_owner)), "Address doesn't exist in the map");
         } else {
-            o.percentage = percent(o.shareTokens, valuation, 5);
+            uint oPercentage = percent(oTokens, valuation, 5);
+            require(ownerMap.insert(uint(_owner), oPercentage << 128 | oTokens), "Sender does not exist in the map");
         }
         
-        if (r.shareTokens == 0) {
-            if (!allOwners[_receiver]) {
-                r.key = totalOwners;
-                allOwners[_receiver] = true;
-                totalOwners += 1;
-            }
-            require(ownerMap.insert(r.key, uint(_receiver)) == false, "Map replacement detected, fatal error");
+        uint rTNew = rTokens.add(_amount);
+        uint rPercentage = percent(rTNew, valuation, 5);
+        if (rTokens == 0) {
+            require(!ownerMap.insert(uint(_receiver), rPercentage << 128 | rTNew), "Map replacement detected");
+        } else {
+            require(ownerMap.insert(uint(_receiver), rPercentage << 128 | rTNew), "Sender does not exist in the map");
         }
-        r.shareTokens = r.shareTokens.add(_amount);
-        r.percentage = r.percentage.add(percent(_amount, valuation, 5));
 
         emit OwnershipTransferred(_owner, _receiver, _amount);
     }
@@ -254,7 +238,8 @@ contract PoolOwners is Ownable {
         @param _amount The amount to increase approval by
      */
     function increaseAllowance(address _sender, uint256 _amount) public {
-        require(owners[msg.sender].shareTokens >= _amount, "The amount to increase allowance by is higher than your balance");
+        uint o = ownerMap.get(uint(msg.sender));
+        require(o << 128 >> 128 >= _amount, "The amount to increase allowance by is higher than your balance");
         allowance[msg.sender][_sender] = allowance[msg.sender][_sender].add(_amount);
     }
 
@@ -266,12 +251,15 @@ contract PoolOwners is Ownable {
     function decreaseAllowance(address _sender, uint256 _amount) public {
         require(allowance[msg.sender][_sender] >= _amount, "The amount to decrease allowance by is higher than the current allowance");
         allowance[msg.sender][_sender] = allowance[msg.sender][_sender].sub(_amount);
+        if (allowance[msg.sender][_sender] == 0) {
+            delete allowance[msg.sender][_sender];
+        }
     }
 
     /**
         @dev Lock the contribution/shares methods
      */
-    function lockShares() public onlyOwner() {
+    function finishContribution() public onlyOwner() {
         require(!locked, "Shares already locked");
         locked = true;
     }
@@ -285,89 +273,52 @@ contract PoolOwners is Ownable {
         require(!distributionActive, "Distribution is already active");
         distributionActive = true;
 
-        ERC677 erc677 = ERC677(_token);
-
-        uint256 currentBalance = erc677.balanceOf(this) - tokenBalance[_token];
+        uint256 currentBalance = ERC20(_token).balanceOf(this);
+        if (!is128Bit(currentBalance)) {
+            currentBalance = 1 << 128;
+        }
         require(currentBalance > distributionMinimum, "Amount in the contract isn't above the minimum distribution limit");
 
-        totalDistributions++;
-        Distribution storage d = distributions[totalDistributions]; 
-        d.owners = ownerMap.size();
-        d.amount = currentBalance;
-        d.token = _token;
-        d.claimed = 0;
-        totalReturned[_token] += currentBalance;
+        distribution = currentBalance << 128;
+        dToken = _token;
 
-        emit TokenDistributionActive(_token, currentBalance, totalDistributions, d.owners);
-    }
-
-    /**
-        @dev Claim tokens by a owner address to add them to their balance
-        @param _owner The address of the owner to claim tokens for
-     */
-    function claimTokens(address _owner) public onlyPoolOwner() {
-        Owner storage o = owners[_owner];
-        Distribution storage d = distributions[totalDistributions]; 
-
-        require(o.shareTokens > 0, "You need to have a share to claim tokens");
-        require(distributionActive, "Distribution isn't active");
-        require(!d.claimedAddresses[_owner], "Tokens already claimed for this address");
-
-        address token = d.token;
-        uint256 tokenAmount = d.amount.mul(o.percentage).div(100000);
-        o.balance[token] = o.balance[token].add(tokenAmount);
-        tokenBalance[token] = tokenBalance[token].add(tokenAmount);
-
-        d.claimed++;
-        d.claimedAddresses[_owner] = true;
-
-        emit ClaimedTokens(_owner, token, tokenAmount, d.claimed, totalDistributions);
-
-        if (d.claimed == d.owners) {
-            distributionActive = false;
-            emit TokenDistributionComplete(token, totalOwners);
-        }
+        emit TokenDistributionActive(_token, currentBalance, ownerMap.size());
     }
 
     /**
         @dev Batch claiming of tokens for owners
-        @dev Index range is based on the owners map size, any in-active owners will be skipped
-        @param _from The start of the index to claim for
-        @param _to The last entry in the index to claim for
+        @param _count The amount of owners to claim tokens for
      */
-    function batchClaim(uint256 _from, uint256 _to) public onlyPoolOwner() {
-        Distribution storage d = distributions[totalDistributions]; 
-        for (uint256 i = _from; i < _to; i++) {
-            address owner = address(ownerMap.get(i));
-            if (owner != 0 && !d.claimedAddresses[owner]) {
-                claimTokens(owner);
-            }
+    function batchClaim(uint256 _count) public onlyPoolOwner() {
+        uint claimed = distribution << 128 >> 128;
+        uint to = _count.add(claimed);
+
+        require(_count.add(claimed) <= ownerMap.size(), "To value is greater than the amount of owners");
+        for (uint256 i = claimed; i < to; i++) {
+            claimTokens(i);
         }
-    } 
+
+        claimed = claimed.add(_count);
+        if (claimed == ownerMap.size()) {
+            distributionActive = false;
+            emit TokenDistributionComplete(dToken, distribution >> 128, ownerMap.size());
+        } else {
+            distribution = distribution >> 128 << 128 | claimed;
+        }
+    }
 
     /**
-        @dev Withdraw tokens from your contract balance
-        @param _token The token address for token claiming
-        @param _amount The amount of tokens to withdraw
+        @dev Claim the tokens for the next owner in the map
      */
-    function withdrawTokens(address _token, uint256 _amount) public onlyPoolOwner() {
-        require(_amount > 0, "You have requested for 0 tokens to be withdrawn");
+    function claimTokens(uint _i) private {
+        address owner = address(ownerMap.getKey(_i));
+        uint o = ownerMap.get(uint(owner));
 
-        Owner storage o = owners[msg.sender];
-        Distribution storage d = distributions[totalDistributions]; 
+        require(o >> 128 > 0, "You need to have a share to claim tokens");
+        require(distributionActive, "Distribution isn't active");
 
-        if (distributionActive && !d.claimedAddresses[msg.sender]) {
-            claimTokens(msg.sender);
-        }
-        require(o.balance[_token] >= _amount, "Amount requested is higher than your balance");
-
-        o.balance[_token] = o.balance[_token].sub(_amount);
-        tokenBalance[_token] = tokenBalance[_token].sub(_amount);
-
-        ERC677 erc677 = ERC677(_token);
-        require(erc677.transfer(msg.sender, _amount) == true, "ERC20 transfer wasn't successful");
-
-        emit TokenWithdrawal(_token, msg.sender, _amount);
+        uint256 tokenAmount = (distribution >> 128).mul(o >> 128).div(100000);
+        require(ERC20(dToken).transfer(owner, tokenAmount), "ERC20 transfer failed");
     }
 
     /**
@@ -388,12 +339,19 @@ contract PoolOwners is Ownable {
     }
 
     /**
-        @dev Returns the contract balance of the sender for a given token
-        @param _token The address of the ERC token
+        @dev Return an owners percentage
+        @param _owner The address of the owner
      */
-    function getOwnerBalance(address _token) public view returns (uint256) {
-        Owner storage o = owners[msg.sender];
-        return o.balance[_token];
+    function getOwnerPercentage(address _owner) public view returns (uint) {
+        return ownerMap.get(uint(_owner)) >> 128;
+    }
+
+    /**
+        @dev Return an owners share token amount
+        @param _owner The address of the owner
+     */
+    function getOwnerTokens(address _owner) public view returns (uint) {
+        return ownerMap.get(uint(_owner)) << 128 >> 128;
     }
 
     /**
@@ -405,10 +363,11 @@ contract PoolOwners is Ownable {
 
     /**
         @dev Returns owner address based on the key
-        @param _key The key of the address in the map
+        @param _i The index of the owner in the map
      */
-    function getOwnerAddress(uint _key) public view returns (address) {
-        return address(ownerMap.get(_key));
+    function getOwnerAddress(uint _i) public view returns (address) {
+        require(_i < ownerMap.size(), "Index is greater than the map size");
+        return address(ownerMap.getKey(_i));
     }
 
     /**
@@ -421,21 +380,19 @@ contract PoolOwners is Ownable {
     }
 
     /**
-        @dev Returns whether a owner has claimed their tokens
-        @param _owner The address of the owner
-        @param _dId The distribution id
-     */
-    function hasClaimed(address _owner, uint256 _dId) public view returns (bool) {
-        Distribution storage d = distributions[_dId]; 
-        return d.claimedAddresses[_owner];
-    }
-
-    /**
         @dev Credit to Rob Hitchens: https://stackoverflow.com/a/42739843
      */
     function percent(uint numerator, uint denominator, uint precision) private pure returns (uint quotient) {
         uint _numerator = numerator * 10 ** (precision+1);
         uint _quotient = ((_numerator / denominator) + 5) / 10;
         return ( _quotient);
+    }
+
+    /**
+        @dev Strict type check for data packing
+        @param _val The value for checking
+     */
+    function is128Bit(uint _val) private pure returns (bool) {
+        return _val < 1 << 128;
     }
 }
