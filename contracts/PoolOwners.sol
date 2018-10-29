@@ -21,26 +21,24 @@ contract PoolOwners is Ownable {
     using SafeMath for uint256;
     using itmap for itmap.itmap;
 
-    itmap.itmap ownerMap;
-
-    uint distribution = 1;
-    address dToken = address(0);
-    bool dActive = false;
+    itmap.itmap private ownerMap;
 
     mapping(address => mapping(address => uint256)) allowance;
-    mapping(address => bool)    public tokenWhitelist;
-    mapping(address => bool)    public whitelist;
+    mapping(address => bool) public tokenWhitelist;
+    mapping(address => bool) public whitelist;
+    mapping(address => uint256) public distributionMinimum;
     
-    uint256 public totalContributed     = 0;
-    bool    public distributionActive   = false;
-    uint256 public distributionMinimum  = 20 ether;
-    uint256 public precisionMinimum     = 0.04 ether;
-    bool    public locked               = false;
+    uint256 public totalContributed   = 0;
+    bool    public distributionActive = false;
+    uint256 public precisionMinimum   = 0.04 ether;
+    bool    public locked             = false;
     address public wallet;
 
     bool    private contributionStarted = false;
     uint256 private valuation           = 4000 ether;
     uint256 private hardCap             = 1000 ether;
+    uint    private distribution        = 1;
+    address private dToken              = address(0);
 
     event Contribution(address indexed sender, uint256 share, uint256 amount);
     event TokenDistributionActive(address indexed token, uint256 amount, uint256 amountOfOwners);
@@ -277,7 +275,7 @@ contract PoolOwners is Ownable {
         if (!is128Bit(currentBalance)) {
             currentBalance = 1 << 128;
         }
-        require(currentBalance > distributionMinimum, "Amount in the contract isn't above the minimum distribution limit");
+        require(currentBalance > distributionMinimum[_token], "Amount in the contract isn't above the minimum distribution limit");
 
         distribution = currentBalance << 128;
         dToken = _token;
@@ -325,17 +323,25 @@ contract PoolOwners is Ownable {
         @dev Whitelist a token so it can be distributed
         @dev Token whitelist is due to the potential of minting tokens and constantly lock this contract in distribution
      */
-    function whitelistToken(address _token) public onlyOwner() {
+    function whitelistToken(address _token, uint256 _minimum) public onlyOwner() {
         require(!tokenWhitelist[_token], "Token is already whitelisted");
         tokenWhitelist[_token] = true;
+        distributionMinimum[_token] = _minimum;
     }
 
     /**
         @dev Set the minimum amount to be of transfered in this contract to start distribution
         @param _minimum The minimum amount
      */
-    function setDistributionMinimum(uint256 _minimum) public onlyOwner() {
-        distributionMinimum = _minimum;
+    function setDistributionMinimum(address _token, uint256 _minimum) public onlyOwner() {
+        distributionMinimum[_token] = _minimum;
+    }
+
+    /**
+        @dev Get the amount of unclaimed owners in a distribution cycle
+     */
+    function getClaimedOwners() public view returns (uint) {
+        return distribution << 128 >> 128;
     }
 
     /**

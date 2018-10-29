@@ -56,7 +56,7 @@ contract('PoolOwners', accounts => {
         initialBalance = await web3.eth.getBalance(accounts[46]);
 
         // Whitelist the token to begin with
-        await poolOwners.whitelistToken(linkToken.address);
+        await poolOwners.whitelistToken(linkToken.address, web3.toWei(1, 'ether'));
     });
 
     /**
@@ -529,7 +529,7 @@ contract('PoolOwners', accounts => {
 
     it("shouldn't be able to distribute tokens under the minimum", async() => {
         // Default is 20, so up it to 1000 to test setting it
-        await poolOwners.setDistributionMinimum(web3.toWei(1000), { from: accounts[0] });
+        await poolOwners.setDistributionMinimum(linkToken.address, web3.toWei(1000), { from: accounts[0] });
 
         // Send LINK tokens to the owners address, minimum is 20
         await linkToken.transfer(PoolOwners.address, web3.toWei(500, 'ether'), { from: accounts[0] });
