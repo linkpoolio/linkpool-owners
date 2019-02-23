@@ -8,10 +8,7 @@
     "bip39": "^2.2.0",
     "ethereumjs-wallet": "^0.6.0",
     "es6-promise": "^4.2.2",
-    "truffle": "^4.1.13",
-    "truffle-contract": "^1.1.8",
-    "truffle-debug-utils": "^1.0.0",
-    "truffle-debugger": "^4.0.2",
+    "truffle": "^4.1.15",
     "web3": "^1.0.0-beta.34",
     "web3-provider-engine": "^14.0.6",
     "web3-utils": "^1.0.0-beta.26"
