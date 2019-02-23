@@ -1,17 +1,17 @@
 {
   "name": "linkpool-owners",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "dependencies": {},
   "devDependencies": {
-    "ascii-art": "^1.4.2",
-    "bip39": "^2.2.0",
-    "ethereumjs-wallet": "^0.6.0",
-    "es6-promise": "^4.2.2",
+    "ascii-art": "^1.5.0",
+    "bip39": "^2.5.0",
+    "ethereumjs-wallet": "^0.6.3",
+    "es6-promise": "^4.2.6",
     "truffle": "^4.1.15",
-    "web3": "^1.0.0-beta.34",
-    "web3-provider-engine": "^14.0.6",
-    "web3-utils": "^1.0.0-beta.26"
+    "web3": "^1.0.0-beta.46",
+    "web3-provider-engine": "^14.1.0",
+    "web3-utils": "^1.0.0-beta.46"
   },
   "scripts": {
     "migrate": "./node_modules/.bin/truffle migrate",
