@@ -6,12 +6,12 @@
 // Contract Artifacts from Truffle
 const PoolOwners = artifacts.require("PoolOwners");
 const LinkToken = artifacts.require("LinkToken");
+const StakeReceiver = artifacts.require("StakeReceiver");
 
 // Contract instances
 let poolOwners;
 let linkToken;
-let tokenReturned;
-let initialBalance;
+let stakeReceiver;
 
 // Async version of `assert.throws()` for negative testing
 async function assertThrowsAsync(fn, regExp) {
@@ -52,8 +52,7 @@ contract('PoolOwners', accounts => {
     before(async() => {
         poolOwners = await PoolOwners.deployed();
         linkToken = await LinkToken.deployed();
-
-        initialBalance = await web3.eth.getBalance(accounts[46]);
+        stakeReceiver = await StakeReceiver.new(poolOwners.address);
 
         // Whitelist the token to begin with
         await poolOwners.whitelistToken(linkToken.address, web3.toWei(1, 'ether'));
@@ -142,7 +141,7 @@ contract('PoolOwners', accounts => {
      */
     it("a minimum contribution of 0.2 ETH should result in a 0.005% share", async() => {
         // Set the contribution
-        await poolOwners.setContribution(accounts[3], web3.toWei(0.2, 'ether'), { from: accounts[0] });
+        await poolOwners.addContribution(accounts[3], web3.toWei(0.2, 'ether'), { from: accounts[0] });
 
         // Get the share of the contributor
         let contributorShare = await poolOwners.getOwnerPercentage(accounts[3]);
@@ -264,6 +263,7 @@ contract('PoolOwners', accounts => {
         assert.equal(1000, web3.fromWei(totalContributed.toNumber(), 'ether'), "Total contributed should equal 1000");
 
         // Assert the ETH was transferred to the wallet
+        let initialBalance = await web3.eth.getBalance(accounts[46]);
         let newBalance = await web3.eth.getBalance(accounts[299]);
         assert.equal(999.8, web3.fromWei(newBalance.toNumber() - initialBalance.toNumber(), 'ether'), "999.8 ETH should be in the crowdsale wallet");
     });
@@ -488,6 +488,43 @@ contract('PoolOwners', accounts => {
     });
 
     /**
+     * Tests for ownership staking to external contracts, allowing ownership to be locked within
+     * another contract, disabling transferring while retaining any rewards to be sent to the owners address
+     */
+
+    it("ensure an owner can stake ownership into an external contract", async() => {
+        await poolOwners.stakeOwnership(stakeReceiver.address, web3.toWei(1, 'ether'), 0, { from: accounts[1] });
+        let stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
+        assert.equal(web3.toWei(1, 'ether'), stakedAmount.toNumber(), "The amount of ownership staked does not match");
+    });
+
+    it("ensure an owner can remove an ownership stake from an external contract", async() => {
+        await poolOwners.removeOwnershipStake(stakeReceiver.address, web3.toWei(1, 'ether'), 0, { from: accounts[1] });
+        let stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
+        assert.equal(0, stakedAmount.toNumber(), "The amount of ownership staked does not match");
+    });
+
+    it("ensure an owner can stake ownership into an external contract multiple times", async() => {
+        await poolOwners.stakeOwnership(stakeReceiver.address, web3.toWei(1, 'ether'), 0, { from: accounts[1] });
+        let stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
+        assert.equal(web3.toWei(1, 'ether'), stakedAmount.toNumber(), "The amount of ownership staked does not match");
+
+        await poolOwners.stakeOwnership(stakeReceiver.address, web3.toWei(1, 'ether'), 0, { from: accounts[1] });
+        stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
+        assert.equal(web3.toWei(2, 'ether'), stakedAmount.toNumber(), "The amount of ownership staked does not match");
+    });
+
+    it("ensure an owner can remove stake ownership from an external contract in increments", async() => {
+        await poolOwners.removeOwnershipStake(stakeReceiver.address, web3.toWei(1, 'ether'), 0, { from: accounts[1] });
+        let stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
+        assert.equal(web3.toWei(1, 'ether'), stakedAmount.toNumber(), "The amount of ownership staked does not match");
+
+        await poolOwners.removeOwnershipStake(stakeReceiver.address, web3.toWei(1, 'ether'), 0, { from: accounts[1] });
+        stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
+        assert.equal(0, stakedAmount.toNumber(), "The amount of ownership staked does not match");
+    });
+
+    /**
      * Negative tests
      */
 
@@ -501,7 +538,7 @@ contract('PoolOwners', accounts => {
                     gas: 200000
                 });
             },
-            "revert"
+            "Your contribution would cause the total to exceed the hardcap"
         );
     });
 
@@ -514,7 +551,7 @@ contract('PoolOwners', accounts => {
             async() => {
                 await poolOwners.setOwnerShare(accounts[1], web3.toWei(1000, 'ether'), { from: accounts[0] });
             },
-            "revert"
+            "Can't manually set shares, it's locked"
         );
     });
 
@@ -523,7 +560,7 @@ contract('PoolOwners', accounts => {
             async() => {
                 await poolOwners.sendOwnershipFrom(accounts[44], accounts[4], web3.toWei(16, 'ether'), { from: accounts[0] });
             },
-            "revert"
+            "Sender is not approved to send ownership of that amount"
         );
     });
 
@@ -538,7 +575,7 @@ contract('PoolOwners', accounts => {
             async() => {
                 await poolOwners.distributeTokens(LinkToken.address, { from: accounts[1] })
             },
-            "revert"
+            "Amount in the contract isn't above the minimum distribution limit"
         );
     });
 
@@ -547,7 +584,22 @@ contract('PoolOwners', accounts => {
             async() => {
                 await poolOwners.setOwnerShare(accounts[1], web3.toWei(5, 'ether'), { from: accounts[1] });
             },
-            "revert"
+            "Sender not authorised"
         );
     });
+
+    it("ensure an owner cannot transfer staked ownership", async() => {
+        let ownerBalance = await poolOwners.getOwnerTokens(accounts[5]);
+        await poolOwners.stakeOwnership(stakeReceiver.address, web3.toWei(5, 'ether'), 0, { from: accounts[5] });
+        let stakedAmount = await stakeReceiver.stakes.call(accounts[5]);
+        assert.equal(web3.toWei(5, 'ether'), stakedAmount.toNumber(), "The amount of ownership staked does not match");
+        
+        await assertThrowsAsync(
+            async() => {
+                await poolOwners.sendOwnership(accounts[6], ownerBalance, { from: accounts[5] });
+            },
+            "The amount to send exceeds the addresses balance"
+        );
+        await poolOwners.sendOwnership(accounts[6], ownerBalance - web3.toWei(5, 'ether'), { from: accounts[5] });
+    })
 });
