@@ -23,6 +23,7 @@ There are four main events within the owners contract:
 - Distribution of Tokens
 - Claiming of tokens
 - Ownership Transfer (ERC20, ERC223 similar methods included)
+- Staking Ownership
 
 #### Contribution
 Contribution is called by the fallback function.
@@ -32,7 +33,7 @@ Usage:
 web3.eth.sendTransaction({
     from: accounts[0],
     to: PoolOwners.address,
-    value: web3.toWei(5, 'ether'),
+    value: web3.toWei(5),
     gas: 100000
 });
 ```
@@ -76,23 +77,52 @@ sendOwnership(address,uint256)
 
 Usage:
 ```js
-await poolOwners.sendOwnership(accounts[3], web3.toWei(500, 'ether'), { from: accounts[0] });
+await poolOwners.sendOwnership(accounts[3], web3.toWei(500), { from: accounts[0] });
 ```
 
 Transferring of ownership can also be done with similar pattern to ERC20 & ERC223, for example:
 ```js
-//ERC20-esque
-await poolOwners.increaseAllowance(accounts[1], web3.toWei(500, 'ether'), { from: accounts[0] });
-await poolOwners.sendOwnershipFrom(accounts[0], accounts[2], web3.toWei(500, 'ether'), { from: accounts[1] });
+//ERC20 like
+await poolOwners.increaseAllowance(accounts[1], web3.toWei(500), { from: accounts[0] });
+await poolOwners.sendOwnershipFrom(accounts[0], accounts[2], web3.toWei(500), { from: accounts[1] });
 
-//ERC223-esque
-await poolOwners.sendOwnershipAndCall(accounts[3], web3.toWei(500, 'ether'), "Hello world", { from: accounts[0] });
+//ERC223 like
+await poolOwners.sendOwnershipAndCall(accounts[3], web3.toWei(500), "Hello world", { from: accounts[0] });
+```
+
+#### Staking Ownership
+Due to the issue of the token rewards always being sent to the wallet that they're held in, ownership staking allows ownership amounts to be staked
+in external contracts. This will be used to grant staking allowances in the staking contracts. 
+
+Method Signature:
+```
+stakeOwnership(address,uint256,bytes)
+```
+Usage:
+```js
+await poolOwners.stakeOwnership(NodeStaking.address, web3.toWei(0.04), "data", { from: accounts[0] });
+```
+
+External Call:
+```
+onOwnershipStake(address,uint256,bytes)
+```
+
+
+#### Removing an Ownership Stake
+Staked ownership cannot be moved out of a holders wallet until it's removed. Calls a receiving contract to inform of removal of stake.
+
+Usage:
+```js
+await poolOwners.removeOwnershipStake(NodeStaking.address, web3.toWei(0.04), "data", { from: accounts[0] });
+```
+
+External Call:
+```
+onOwnershipStakeRemoval(address,uint256,bytes)
 ```
 
 ## Development
-
-Requires v8 of NodeJS or later.
-
 #### Install
 
 ```
@@ -113,37 +143,40 @@ truffle migrate --reset
 trufle test
 ```
 
-This should result in something similar to:
 ```
   Contract: PoolOwners
-    ✓ creators should make up of 75% of the share holding (54ms)    
-    ✓ should be able to whitelist all accounts contributing (5547ms)    
-    ✓ shouldn't be allowed to contribute if not whitelisted (257ms)
-    ✓ shouldn't be allowed to contribute if the phase isn't active (224ms)   
-    ✓ shouldn't be able to contribute an amount which isn't divisible by 0.2 ETH (359ms)
-    ✓ a minimum contribution of 0.2 ETH should result in a 0.005% share (255ms)
-    ✓ a contribution of 16 ETH should result in a 0.4% share (399ms)    
-    ✓ a contribution of 20 ETH should result in a 0.5% share (389ms)
-    ✓ a contribution of 13.6 ETH should result in a 0.34% share (369ms)    
-    ✓ a contributor should be able to contribute multiple times (289ms)
+    ✓ should be able to whitelist all accounts contributing (5085ms)
+    ✓ shouldn't be allowed to contribute if not whitelisted (243ms)
+    ✓ shouldn't be allowed to contribute if the phase isn't active (229ms)
+    ✓ shouldn't be able to contribute an amount which isn't divisible by 0.2 ETH (351ms)
+    ✓ a minimum contribution of 0.2 ETH should result in a 0.005% share (230ms)
+    ✓ a contribution of 16 ETH should result in a 0.4% share (385ms)
+    ✓ a contribution of 20 ETH should result in a 0.5% share (405ms)
+    ✓ a contribution of 13.6 ETH should result in a 0.34% share (410ms)
+    ✓ a contributor should be able to contribute multiple times (309ms)
     ✓ should increment total contributed when contributions are made
-    ✓ should be able to contribute up until 1000 ETH (14285ms)    
-    ✓ shouldn't be able to distribute a non-whitelisted token (347ms)
-    ✓ should proportionately distribute 100 tokens to all 43 contributors (3513ms)    
-    ✓ should proportionately distribute 5000 tokens to all 43 contributors (4852ms)
-    ✓ shouldn't be able to transfer ownership not adhering to the minimum precision (94ms)
-    ✓ should be able to transfer 12.5% ownership to another address (233ms)
-    ✓ should be able to transfer 0.4% ownership to a new address (536ms)
-    ✓ should proportionately distribute 5000.1234567 tokens to all 43 contributors (3564ms)
-    ✓ should allow distribution when an owner transfers all his ownership away and then gets some back (2888ms)
-    ✓ shouldn't be able to contribute after the hard cap has been reached (243ms)
-    ✓ should be able to lock the shares inside the contract (161ms)    
+    ✓ should be able to contribute up until 1000 ETH (14367ms)
+    ✓ shouldn't be able to distribute a non-whitelisted token (342ms)
+    ✓ should proportionately distribute 100 tokens to all 43 contributors (3283ms)
+    ✓ should proportionately distribute 5000 tokens to all 43 contributors (3147ms)
+    ✓ shouldn't be able to transfer ownership not adhering to the minimum precision (84ms)
+    ✓ should be able to transfer 12.5% ownership to another address (189ms)
+    ✓ should be able to transfer 0.4% ownership to a new address (484ms)
+    ✓ should proportionately distribute 5000.1234567 tokens to all 43 contributors (3233ms)
+    ✓ should allow distribution when an owner transfers all his ownership away and then gets some back (2577ms)
+    ✓ ensure an owner can stake ownership into an external contract (191ms)
+    ✓ ensure an owner can remove an ownership stake from an external contract (168ms)
+    ✓ ensure an owner can stake ownership into an external contract multiple times (329ms)
+    ✓ ensure an owner can remove stake ownership from an external contract in increments (284ms)
+    ✓ shouldn't be able to contribute after the hard cap has been reached (239ms)
+    ✓ should be able to lock the shares inside the contract (202ms)
     ✓ shouldn't be able to send ownership on behalf with no allownace (78ms)
-    ✓ shouldn't be able to distribute tokens under the minimum (360ms)
-    ✓ shouldn't allow contributors to call set owner share (96ms)
+    ✓ shouldn't be able to distribute tokens under the minimum (412ms)
+    ✓ shouldn't allow contributors to call set owner share (83ms)
+    ✓ ensure an owner cannot transfer staked ownership (491ms)
 
 
-  25 passing (40s)
+  30 passing (38s)
 ```
 
 ### About

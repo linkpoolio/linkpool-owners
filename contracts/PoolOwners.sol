@@ -8,7 +8,7 @@ import "./lib/ItMap.sol";
 
 /**
     @title OwnersReceiver
-    @dev Interface for receiving of ownership transfers and stakes
+    @dev PoolOwners supporting receiving contract
  */
 contract OwnersReceiver {
     function onOwnershipTransfer(address _sender, uint _value, bytes _data) public;
@@ -18,7 +18,7 @@ contract OwnersReceiver {
 
 /**
     @title PoolOwners
-    @dev LP token contract that allows for crowdsale, ERC20 token distribution and ownership staking
+    @dev ERC20 token distribution to holders based on share ownership
  */
 contract PoolOwners is Ownable {
 
@@ -46,6 +46,11 @@ contract PoolOwners is Ownable {
 
     address public wallet;
     address private dToken = address(0);
+    
+    uint   public constant totalSupply = 4000 ether;
+    string public constant name = "LinkPool Owners";
+    uint8  public constant decimals = 18;
+    string public constant symbol = "LP";
 
     event Contribution(address indexed sender, uint256 share, uint256 amount);
     event TokenDistributionActive(address indexed token, uint256 amount, uint256 amountOfOwners);
@@ -77,7 +82,7 @@ contract PoolOwners is Ownable {
 
     /**
         @dev Fallback function, redirects to contribution
-        @dev Transfers tokens to LP wallet address
+        @dev Transfers tokens to the wallet address
      */
     function() public payable {
         require(contributionStarted, "Contribution is not active");
@@ -326,6 +331,14 @@ contract PoolOwners is Ownable {
      */
     function setDistributionMinimum(address _token, uint256 _minimum) public onlyOwner() {
         distributionMinimum[_token] = _minimum;
+    }
+
+    /**
+        @dev ERC20 implementation of balances to allow for viewing in supported wallets
+        @param _owner The address of the owner
+     */
+    function balanceOf(address _owner) public view returns (uint) {
+        return ownerMap.get(uint(_owner)) << 128 >> 128;
     }
 
     /**
