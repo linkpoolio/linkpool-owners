@@ -254,6 +254,7 @@ contract PoolOwners is Ownable {
         require(stakeTotals[msg.sender] >= _amount, "The stake amount to remove is higher than what's staked");
         require(stakes[msg.sender][_receiver] >= _amount, "The stake amount to remove is greater than what's staked with the receiver");
         stakeTotals[msg.sender] = stakeTotals[msg.sender].sub(_amount);
+        stakes[msg.sender][_receiver] = stakes[msg.sender][_receiver].sub(_amount);
         if (stakes[msg.sender][_receiver] == 0) {
             delete stakes[msg.sender][_receiver];
         }
