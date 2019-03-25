@@ -500,12 +500,24 @@ contract('PoolOwners', accounts => {
         await poolOwners.stakeOwnership(stakeReceiver.address, web3.toWei(1), 0, { from: accounts[1] });
         let stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
         assert.equal(web3.toWei(1), stakedAmount.toNumber(), "The amount of ownership staked does not match");
+
+        let stakedContractAmount = await poolOwners.stakes.call(accounts[1], stakeReceiver.address);
+        assert.equal(web3.toWei(1), stakedContractAmount.toNumber(), "The amount of recorded ownership staked to that address does not match");
+
+        let stakedTotalAmount = await poolOwners.stakeTotals.call(accounts[1]);
+        assert.equal(web3.toWei(1), stakedTotalAmount.toNumber(), "The total recorded ownership stake does not match");
     });
 
     it("ensure an owner can remove an ownership stake from an external contract", async() => {
         await poolOwners.removeOwnershipStake(stakeReceiver.address, web3.toWei(1), 0, { from: accounts[1] });
         let stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
         assert.equal(0, stakedAmount.toNumber(), "The amount of ownership staked does not match");
+
+        let stakedContractAmount = await poolOwners.stakes.call(accounts[1], stakeReceiver.address);
+        assert.equal(web3.toWei(0), stakedContractAmount.toNumber(), "The amount of recorded ownership staked to that address does not match");
+
+        let stakedTotalAmount = await poolOwners.stakeTotals.call(accounts[1]);
+        assert.equal(web3.toWei(0), stakedTotalAmount.toNumber(), "The total recorded ownership stake does not match");
     });
 
     it("ensure an owner can stake ownership into an external contract multiple times", async() => {
@@ -516,6 +528,12 @@ contract('PoolOwners', accounts => {
         await poolOwners.stakeOwnership(stakeReceiver.address, web3.toWei(1), 0, { from: accounts[1] });
         stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
         assert.equal(web3.toWei(2), stakedAmount.toNumber(), "The amount of ownership staked does not match");
+
+        let stakedContractAmount = await poolOwners.stakes.call(accounts[1], stakeReceiver.address);
+        assert.equal(web3.toWei(2), stakedContractAmount.toNumber(), "The amount of recorded ownership staked to that address does not match");
+
+        let stakedTotalAmount = await poolOwners.stakeTotals.call(accounts[1]);
+        assert.equal(web3.toWei(2), stakedTotalAmount.toNumber(), "The total recorded ownership stake does not match");
     });
 
     it("ensure an owner can remove stake ownership from an external contract in increments", async() => {
@@ -523,9 +541,21 @@ contract('PoolOwners', accounts => {
         let stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
         assert.equal(web3.toWei(1), stakedAmount.toNumber(), "The amount of ownership staked does not match");
 
+        let stakedContractAmount = await poolOwners.stakes.call(accounts[1], stakeReceiver.address);
+        assert.equal(web3.toWei(1), stakedContractAmount.toNumber(), "The amount of recorded ownership staked to that address does not match");
+
+        let stakedTotalAmount = await poolOwners.stakeTotals.call(accounts[1]);
+        assert.equal(web3.toWei(1), stakedTotalAmount.toNumber(), "The total recorded ownership stake does not match");
+
         await poolOwners.removeOwnershipStake(stakeReceiver.address, web3.toWei(1), 0, { from: accounts[1] });
         stakedAmount = await stakeReceiver.stakes.call(accounts[1]);
         assert.equal(0, stakedAmount.toNumber(), "The amount of ownership staked does not match");
+
+        stakedContractAmount = await poolOwners.stakes.call(accounts[1], stakeReceiver.address);
+        assert.equal(web3.toWei(0), stakedContractAmount.toNumber(), "The amount of recorded ownership staked to that address does not match");
+
+        stakedTotalAmount = await poolOwners.stakeTotals.call(accounts[1]);
+        assert.equal(web3.toWei(0), stakedTotalAmount.toNumber(), "The total recorded ownership stake does not match");
     });
 
     /**
