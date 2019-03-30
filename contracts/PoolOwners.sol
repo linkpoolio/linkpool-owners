@@ -416,7 +416,7 @@ contract PoolOwners is Ownable {
         require(distributionActive, "Distribution isn't active");
 
         uint256 tokenAmount = (distribution >> 128).mul(o >> 128).div(100000);
-        if (dToken == address(0)) {
+        if (dToken == address(0) && !_isContract(owner)) {
             owner.transfer(tokenAmount);
         } else {
             require(ERC20(dToken).transfer(owner, tokenAmount), "ERC20 transfer failed");
