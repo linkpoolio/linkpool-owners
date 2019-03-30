@@ -78,6 +78,7 @@ contract PoolOwners is Ownable {
     constructor(address _wallet) public {
         require(_wallet != address(0), "The ETH wallet address needs to be set");
         wallet = _wallet;
+        tokenWhitelist[address(0)] = true; // 0x0 treated as ETH
     }
 
     /**
@@ -85,10 +86,12 @@ contract PoolOwners is Ownable {
         @dev Transfers tokens to the wallet address
      */
     function() public payable {
-        require(contributionStarted, "Contribution is not active");
-        require(whitelist[msg.sender], "You are not whitelisted");
-        contribute(msg.sender, msg.value); 
-        wallet.transfer(msg.value);
+        if (!locked) {
+            require(contributionStarted, "Contribution is not active");
+            require(whitelist[msg.sender], "You are not whitelisted");
+            contribute(msg.sender, msg.value); 
+            wallet.transfer(msg.value);
+        }
     }
 
     /**
@@ -281,7 +284,12 @@ contract PoolOwners is Ownable {
         require(!distributionActive, "Distribution is already active");
         distributionActive = true;
 
-        uint256 currentBalance = ERC20(_token).balanceOf(this);
+        uint256 currentBalance;
+        if (_token == address(0)) {
+            currentBalance = address(this).balance;
+        } else {
+            currentBalance = ERC20(_token).balanceOf(this);
+        }
         if (!_is128Bit(currentBalance)) {
             currentBalance = 1 << 128;
         }
@@ -300,18 +308,15 @@ contract PoolOwners is Ownable {
     function batchClaim(uint256 _count) public onlyPoolOwner() {
         uint claimed = distribution << 128 >> 128;
         uint to = _count.add(claimed);
+        distribution = distribution >> 128 << 128 | to;
 
         require(_count.add(claimed) <= ownerMap.size(), "To value is greater than the amount of owners");
         for (uint256 i = claimed; i < to; i++) {
             _claimTokens(i);
         }
-
-        claimed = claimed.add(_count);
-        if (claimed == ownerMap.size()) {
+        if (to == ownerMap.size()) {
             distributionActive = false;
             emit TokenDistributionComplete(dToken, distribution >> 128, ownerMap.size());
-        } else {
-            distribution = distribution >> 128 << 128 | claimed;
         }
     }
 
@@ -411,7 +416,11 @@ contract PoolOwners is Ownable {
         require(distributionActive, "Distribution isn't active");
 
         uint256 tokenAmount = (distribution >> 128).mul(o >> 128).div(100000);
-        require(ERC20(dToken).transfer(owner, tokenAmount), "ERC20 transfer failed");
+        if (dToken == address(0)) {
+            owner.transfer(tokenAmount);
+        } else {
+            require(ERC20(dToken).transfer(owner, tokenAmount), "ERC20 transfer failed");
+        }
     }  
 
     /**

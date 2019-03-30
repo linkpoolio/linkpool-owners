@@ -47,6 +47,17 @@ contract('PoolOwners', accounts => {
     }
 
     /**
+     * Get all ETH balances for a set of accounts
+     */
+    async function getETHBalances(start, end) {
+        let balances = [];
+        for (let i = 0; i <= end - start; i++) {
+            balances[i + start] = await web3.eth.getBalance(accounts[i + start]); 
+        }
+        return balances;
+    }
+
+    /**
      * Gets the contract instances for public contribution
      */
     before(async() => {
@@ -288,6 +299,33 @@ contract('PoolOwners', accounts => {
         );
     });
 
+    it("shouldn't be able to contribute after the hard cap has been reached", async() => {
+        await assertThrowsAsync(
+            async() => {
+                await web3.eth.sendTransaction({
+                    from: accounts[3],
+                    to: PoolOwners.address,
+                    value: web3.toWei(5),
+                    gas: 200000
+                });
+            },
+            "Your contribution would cause the total to exceed the hardcap"
+        );
+    });
+
+    it("should be able to lock the shares inside the contract", async() => {
+        // Lock the shares
+        await poolOwners.finishContribution({ from: accounts[0] });
+
+        // Ensure shares can't be modified
+        await assertThrowsAsync(
+            async() => {
+                await poolOwners.setOwnerShare(accounts[1], web3.toWei(1000), { from: accounts[0] });
+            },
+            "Can't manually set shares, it's locked"
+        );
+    });
+
     /**
      *  Should be able to distribute 100 tokens to all contributors
      */
@@ -361,6 +399,43 @@ contract('PoolOwners', accounts => {
         for (i = 8; i < 44; i++) {
             tokenBalance = await linkToken.balanceOf(accounts[i]);
             assert.equal(tokenBalance.toNumber(), tokenBalances[i].plus(web3.toWei(31.25)).toNumber(), "Total returned for the contributor is incorrect");
+        }
+    });
+
+    /**
+     *  Should be able to distribute 90 ETH to all contributors
+     */
+    it("should proportionately distribute 90 ETH to all 43 contributors", async() => {
+        // Send ETH to the owners address
+        await web3.eth.sendTransaction({
+            from: accounts[0],
+            to: PoolOwners.address,
+            value: web3.toWei(90),
+            gas: 200000
+        })
+
+        // Distribute the ETH to the contributors
+        await poolOwners.distributeTokens(0, { from: accounts[1] });
+
+        // Get all ETH balances prior to claiming
+        let ethBalances = await getETHBalances(1, 44);
+
+        // Claim all the tokens on behalf of the owners
+        await batchClaimAll();
+
+        // Get all ETH balances after claiming
+        let newEthBalances = await getETHBalances(1, 44);
+
+        // Assert the distribution of tokens is correct (ignore wallet 1 just due to gas costs and calculating, wallet 2 holds the same percentage)
+        assert.equal(newEthBalances[2].toNumber(), ethBalances[2].plus(web3.toWei(33.75)).toNumber(), "Total returned for the second creator is incorrect");
+        assert.equal(newEthBalances[3].toNumber(), ethBalances[3].plus(web3.toWei(0.009)).toNumber(), "Total returned for the first contributor is incorrect");
+        assert.equal(newEthBalances[4].toNumber(), ethBalances[4].plus(web3.toWei(0.36)).toNumber(), "Total returned for the second contributor is incorrect");
+        assert.equal(newEthBalances[5].toNumber(), ethBalances[5].plus(web3.toWei(0.45)).toNumber(), "Total returned for the third contributor is incorrect");
+        assert.equal(newEthBalances[6].toNumber(), ethBalances[6].plus(web3.toWei(0.306)).toNumber(), "Total returned for the fourth contributor is incorrect");
+        assert.equal(newEthBalances[7].toNumber(), ethBalances[7].plus(web3.toWei(1.125)).toNumber(), "Total returned for the fifth contributor is incorrect");
+
+        for (i = 8; i < 44; i++) {
+            assert.equal(newEthBalances[i].toNumber(), ethBalances[i].plus(web3.toWei(0.5625)).toNumber(), "Total returned for the contributor is incorrect");
         }
     });
 
@@ -531,33 +606,6 @@ contract('PoolOwners', accounts => {
     /**
      * Negative tests
      */
-
-    it("shouldn't be able to contribute after the hard cap has been reached", async() => {
-        await assertThrowsAsync(
-            async() => {
-                await web3.eth.sendTransaction({
-                    from: accounts[3],
-                    to: PoolOwners.address,
-                    value: web3.toWei(5),
-                    gas: 200000
-                });
-            },
-            "Your contribution would cause the total to exceed the hardcap"
-        );
-    });
-
-    it("should be able to lock the shares inside the contract", async() => {
-        // Lock the shares
-        await poolOwners.finishContribution({ from: accounts[0] });
-
-        // Ensure shares can't be modified
-        await assertThrowsAsync(
-            async() => {
-                await poolOwners.setOwnerShare(accounts[1], web3.toWei(1000), { from: accounts[0] });
-            },
-            "Can't manually set shares, it's locked"
-        );
-    });
 
     it("shouldn't be able to send ownership on behalf with no allownace", async() => {
         await assertThrowsAsync(
