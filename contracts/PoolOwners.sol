@@ -306,17 +306,18 @@ contract PoolOwners is Ownable {
         @param _count The amount of owners to claim tokens for
      */
     function batchClaim(uint256 _count) public onlyPoolOwner() {
+        require(distributionActive, "Distribution isn't active");
         uint claimed = distribution << 128 >> 128;
         uint to = _count.add(claimed);
         distribution = distribution >> 128 << 128 | to;
-
         require(_count.add(claimed) <= ownerMap.size(), "To value is greater than the amount of owners");
-        for (uint256 i = claimed; i < to; i++) {
-            _claimTokens(i);
-        }
+
         if (to == ownerMap.size()) {
             distributionActive = false;
             emit TokenDistributionComplete(dToken, distribution >> 128, ownerMap.size());
+        }
+        for (uint256 i = claimed; i < to; i++) {
+            _claimTokens(i);
         }
     }
 
@@ -411,10 +412,6 @@ contract PoolOwners is Ownable {
     function _claimTokens(uint _i) private {
         address owner = address(ownerMap.getKey(_i));
         uint o = ownerMap.get(uint(owner));
-
-        require(o >> 128 > 0, "You need to have a share to claim tokens");
-        require(distributionActive, "Distribution isn't active");
-
         uint256 tokenAmount = (distribution >> 128).mul(o >> 128).div(100000);
         if (dToken == address(0) && !_isContract(owner)) {
             owner.transfer(tokenAmount);
